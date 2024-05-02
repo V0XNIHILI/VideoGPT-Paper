@@ -12,6 +12,8 @@ from videogpt.layers.norm import LayerNorm
 from videogpt.layers.attention import SelfAttentionModel
 from videogpt.layers.utils import shift_dim, LambdaModule
 
+from torch_maskgit import MaskGit
+
 MAX_SAMPLES_PER_BATCH = 32
 
 class ImageGPT(nn.Module):
@@ -62,13 +64,34 @@ class ImageGPT(nn.Module):
 
         self.norm = LayerNorm(embd_dim, cond_dim=cond_dim)
 
-        self.fc_out = nn.Linear(embd_dim, n_vocab, bias=False)
-        self.fc_out.weight.data.copy_(torch.zeros(n_vocab, embd_dim))
+        self.fc_out = nn.Identity()
 
         self.gen_loss = nn.CrossEntropyLoss()
 
         self.cond_cache = None
         self._sample_idxs = self._get_sample_order(shape, attn_type, attn_kwargs)
+
+        MASKGIT_VOCAB_DIM = 256
+        MASKGIT_HIDDEN_DIM = int(192/2)
+        MASKGIT_SHAPE = self.shape[1:]  # self.shape is (t, h, w) = (16, 4, 4) but we do per frame masking so we remove the time dimension
+        TFM_ARGS = {
+            "embed_dim": MASKGIT_HIDDEN_DIM,
+            "num_heads": 8,
+            "num_layers": 8,
+            "mlp_dim": MASKGIT_HIDDEN_DIM*4, # Can be anything
+            "dropout": 0.0,
+            "attention_dropout": 0.0,
+
+            "vocab_dim": MASKGIT_VOCAB_DIM, # Required, else the code fails
+            # "vocab_size": vocab_size, # DONT USE INTERNAL TF EMBEDDINGS AS TECO DOESNT EITHE
+            "input_dim": embd_dim # Input dimensions for pre-encoded tokens
+        }
+
+        self.maskgit = MaskGit(MASKGIT_SHAPE,
+                               self.vqvae.n_codes,
+                               MASKGIT_VOCAB_DIM,
+                               'cosine',
+                               TFM_ARGS)
 
     def sample_order(self):
         for idx in self._sample_idxs:
@@ -205,6 +228,23 @@ class ImageGPT(nn.Module):
         return_dict.update(gen_logits=gen_logits)
         return return_dict
 
+    def forward_maskgit(self, targets, h):
+        # h is now of shape: (batch, t, h, w, c)
+        dims = h.shape
+
+        # Combine the batch and time dimensions
+        h = h.view(-1, *h.shape[2:])
+        maskgit_targets = targets.view(-1, *targets.shape[2:])
+
+        logits, labels, mask = self.maskgit(maskgit_targets, h)
+
+        # Split the batch and time dimensions again
+        logits = logits.view(dims[0], dims[1], *logits.shape[1:])
+        labels = labels.view(dims[0], dims[1], *labels.shape[1:])
+        mask = mask.view(dims[0], dims[1], *mask.shape[1:])
+
+        return logits, labels, mask
+
     def forward(
             self,
             encodings: torch.Tensor,
@@ -225,7 +265,13 @@ class ImageGPT(nn.Module):
 
         """ Compute generative loss """
 
-        gen_loss = self.gen_loss(shift_dim(return_dict['gen_logits'], -1, 1), encodings)
+        logits, _, mask = self.forward_maskgit(encodings, return_dict['gen_logits'])
+
+        loss = F.cross_entropy(shift_dim(logits, -1, 1), encodings, reduction='none')
+
+        loss = (loss * mask).sum() / mask.sum()
+        gen_loss = loss * torch.prod(self.shape)
+
         return_dict.update(loss=gen_loss)
 
         return return_dict
