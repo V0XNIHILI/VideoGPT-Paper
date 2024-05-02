@@ -47,7 +47,7 @@ gpt_small = dict(
     ff_mult=4,
     dropout=0.2,
     checkpoint=False,
-    attn_type='sparse',
+    attn_type='full',
     attn_kwargs=dict(attn_dropout=0.),
 )
 
