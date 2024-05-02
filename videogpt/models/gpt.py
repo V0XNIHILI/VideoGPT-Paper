@@ -71,6 +71,9 @@ class ImageGPT(nn.Module):
         self.cond_cache = None
         self._sample_idxs = self._get_sample_order(shape, attn_type, attn_kwargs)
 
+        self.MASKGIT_T_draft = 8
+        self.MASKGIT_T_revise = 8
+        self.MASKGIT_M = 2
         MASKGIT_VOCAB_DIM = 256
         MASKGIT_HIDDEN_DIM = int(192/2)
         MASKGIT_SHAPE = self.shape[1:]  # self.shape is (t, h, w) = (16, 4, 4) but we do per frame masking so we remove the time dimension
@@ -88,7 +91,7 @@ class ImageGPT(nn.Module):
         }
 
         self.maskgit = MaskGit(MASKGIT_SHAPE,
-                               self.vqvae.n_codes,
+                               n_vocab,
                                MASKGIT_VOCAB_DIM,
                                'cosine',
                                TFM_ARGS)
@@ -167,8 +170,13 @@ class ImageGPT(nn.Module):
                     else:
                         s_inp, q_inp = samples_subset[prev_idx], quantized[prev_idx]
 
-                    logits = self(quantized=q_inp, encodings=s_inp, cond=cond_subset, decode_step=j,
+                    h = self(quantized=q_inp, encodings=s_inp, cond=cond_subset, decode_step=j,
                                   decode_idx=idx)['gen_logits']
+
+                    logits = self.maskgit.sample(h.shape[0], self.MASKGIT_T_draft,
+                                            self.MASKGIT_T_revise, self.MASKGIT_M,
+                                            cond=h)
+
                     probs = F.softmax(logits / temperature, dim=-1)
                     if probs.shape[0] == 1:
                         probs = probs.squeeze().unsqueeze(0)
