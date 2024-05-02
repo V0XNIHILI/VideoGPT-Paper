@@ -7,7 +7,7 @@ from videogpt.utils import deepclone
 from videogpt.layers.pos_embd import BroadcastPosEmbedND
 from videogpt.layers.utils import view_range, shift_dim
 from videogpt.layers.attention.full_attention import FullAttention
-from videogpt.layers.attention.sparse_attention import SparseAttention
+# from videogpt.layers.attention.sparse_attention import SparseAttention
 
 
 class EncoderAttention(nn.Module):

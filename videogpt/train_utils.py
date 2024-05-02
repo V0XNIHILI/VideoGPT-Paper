@@ -18,6 +18,8 @@ from videogpt.utils import chunk
 from videogpt.dist_ops import allgather
 from videogpt.layers.utils import shift_dim
 
+from videogpt.vqvae.vqvae import VQVAE
+
 
 def get_rank_size():
     if dist.is_initialized():
@@ -127,13 +129,13 @@ def load_vqvae(ckpt, device, is_root, freeze_model) -> Tuple[Any, Dict[str, Any]
     if is_root:
         print(f"VQ-VAE checkpoint iteration {ckpt['iteration']} with best loss {ckpt['best_loss']}")
 
-    model, hp = config_model(
-        configs_str='', **ckpt['hp'], cond_types=None)
-    model = model.to(device=device)
-    model.load_state_dict(ckpt['state_dict'])
+
+    model =  VQVAE.load_from_checkpoint("/space/ddenblanken/Projects/VideoGPT/bair_stride4x2x2")
+    hp = {"embedding_dim": model.embedding_dim, "codes_per_book": model.n_codes}
+    model.codebook._need_init = False
 
     # only perform data-dependent init when training from scratch, broadcast otherwise
-    model.no_need_init()
+    # model.no_need_init()
 
     if freeze_model:
         # disable gradients
@@ -143,7 +145,9 @@ def load_vqvae(ckpt, device, is_root, freeze_model) -> Tuple[Any, Dict[str, Any]
 
         ckpt = None  # no need to return checkpoint dict
 
-    return model, hp, ckpt
+    model = model.to(device=device)
+
+    return model, hp
 
 
 def save_checkpoint(state, is_best, is_root, output_dir, filename='checkpoint.pth.tar'):
