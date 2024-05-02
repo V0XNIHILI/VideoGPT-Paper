@@ -8,7 +8,7 @@ import numpy as np
 import wandb
 
 # Start a wandb run with `sync_tensorboard=True`
-wandb.init(project="moving_mnist_videogpt", sync_tensorboard=True)
+wandb.init(project="maskgit_videogpt", sync_tensorboard=True)
 
 import torch
 import torch.optim as optim
