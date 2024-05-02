@@ -154,8 +154,9 @@ def save_checkpoint(state, is_best, is_root, output_dir, filename='checkpoint.pt
     if is_root:
         ckpt_dir = os.path.join(output_dir, 'checkpoints')
         filename = os.path.join(ckpt_dir, filename)
-        torch.save(state, filename)
+        
         if is_best:
+            torch.save(state, filename)
             shutil.copyfile(filename, os.path.join(ckpt_dir, 'model_best.pth.tar'))
 
         print(f'saved checkpoints to {filename}, is_best = {is_best}')
