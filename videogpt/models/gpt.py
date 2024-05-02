@@ -278,7 +278,7 @@ class ImageGPT(nn.Module):
         loss = F.cross_entropy(shift_dim(logits, -1, 1), encodings, reduction='none')
 
         loss = (loss * mask).sum() / mask.sum()
-        gen_loss = loss * torch.prod(self.shape)
+        gen_loss = loss * np.prod(self.shape)
 
         return_dict.update(loss=gen_loss)
 
