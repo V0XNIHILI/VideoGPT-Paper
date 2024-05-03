@@ -75,7 +75,7 @@ class ImageGPT(nn.Module):
         self.MASKGIT_T_revise = 8
         self.MASKGIT_M = 2
         MASKGIT_VOCAB_DIM = 256
-        MASKGIT_HIDDEN_DIM = int(192/2)
+        MASKGIT_HIDDEN_DIM = 1024
         MASKGIT_SHAPE = self.shape[1:]  # self.shape is (t, h, w) = (16, 4, 4) but we do per frame masking so we remove the time dimension
         TFM_ARGS = {
             "embed_dim": MASKGIT_HIDDEN_DIM,
