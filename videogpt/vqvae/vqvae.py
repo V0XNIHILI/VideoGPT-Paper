@@ -132,6 +132,8 @@ class Codebook(nn.Module):
         self.embedding_dim = embedding_dim
         self._need_init = True
 
+        self.n_codebooks = 1
+
     def _tile(self, x):
         d, ew = x.shape
         if d < self.n_codes:
@@ -206,15 +208,9 @@ class Codebook(nn.Module):
                     commitment_loss=commitment_loss, perplexity=perplexity)
 
     def dictionary_lookup(self, encodings, no_flatten=False):
-        # encodings: (b, t, h, w, n_c)
-        encodings = shift_dim(encodings, -1, 0) # (n_c, b, t, h, w)
-        # (b, t, h, w, n_c, c)
-        quantized = torch.stack([F.embedding(encodings[i], self.embeddings[i])
-                                 for i in range(self.n_codebooks)], dim=-2)
-        if not no_flatten:
-            quantized = quantized.flatten(start_dim=-2) # flatten n_c * c
+        quantized = F.embedding(encodings, self.embeddings)
         quantized = shift_dim(quantized, -1, 1) # (b, n_c * c, t, h, w) or (b, c, t, h, w, n_c)
-        return quantized
+        return quantized.unsqueeze(-1)
 
 class Encoder(nn.Module):
     def __init__(self, n_hiddens, n_res_layers, downsample):
