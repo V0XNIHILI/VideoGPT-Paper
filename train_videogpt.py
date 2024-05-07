@@ -8,7 +8,6 @@ import numpy as np
 import wandb
 
 # Start a wandb run with `sync_tensorboard=True`
-wandb.init(project="maskgit_videogpt", sync_tensorboard=True)
 
 import torch
 import torch.optim as optim
@@ -42,6 +41,10 @@ def main_worker(rank, size, args_in):
     global args
     args = args_in
     is_root = rank == 0
+
+    if is_root:
+        wandb.init(project="moving_mnist_videogpt", sync_tensorboard=True)
+
 
     dist.init_process_group(backend='nccl', init_method=f"tcp://localhost:{args.port}",
                             world_size=size, rank=rank)
@@ -474,8 +477,8 @@ if __name__ == "__main__":
     parser.add_argument('--amp', action='store_true', help='Use AMP training')
 
     # Logging Parameters
-    parser.add_argument('--test_every', type=int, default=10000, help='default: 5000')
-    parser.add_argument('--generate_every', type=int, default=10000, help='default: 10000')
+    parser.add_argument('--test_every', type=int, default=5000, help='default: 5000')
+    parser.add_argument('--generate_every', type=int, default=10000*1000000, help='default: 10000')
     parser.add_argument('-i', '--log_interval', type=int, default=100, help='default: 100')
 
     parser.add_argument('-p', '--port', type=int, default=23455,

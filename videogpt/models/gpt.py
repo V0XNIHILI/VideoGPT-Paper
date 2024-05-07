@@ -64,6 +64,7 @@ class ImageGPT(nn.Module):
 
         self.norm = LayerNorm(embd_dim, cond_dim=cond_dim)
 
+        #self.fc_out = nn.Linear(self.embd_dim, self.n_vocab)
         self.fc_out = nn.Identity()
 
         self.gen_loss = nn.CrossEntropyLoss()
@@ -75,10 +76,10 @@ class ImageGPT(nn.Module):
         self.MASKGIT_T_revise = 8
         self.MASKGIT_M = 2
         MASKGIT_VOCAB_DIM = 256
-        MASKGIT_HIDDEN_DIM = int(192/2)
+        MASKGIT_HIDDEN_DIM = 96
         MASKGIT_SHAPE = self.shape[1:]  # self.shape is (t, h, w) = (16, 4, 4) but we do per frame masking so we remove the time dimension
         TFM_ARGS = {
-            "embed_dim": MASKGIT_HIDDEN_DIM,
+            "embed_dim": 96,
             "num_heads": 8,
             "num_layers": 8,
             "mlp_dim": MASKGIT_HIDDEN_DIM*4, # Can be anything
@@ -278,8 +279,8 @@ class ImageGPT(nn.Module):
         loss = F.cross_entropy(shift_dim(logits, -1, 1), encodings, reduction='none')
 
         loss = (loss * mask).sum() / mask.sum()
-        gen_loss = loss * np.prod(self.shape)
+        #gen_loss = loss * np.prod(self.shape)
 
-        return_dict.update(loss=gen_loss)
+        return_dict.update(loss=loss)
 
         return return_dict
