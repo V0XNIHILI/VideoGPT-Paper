@@ -3,3 +3,5 @@ VideoGPT_Paper.egg-info/
 
 wandb
 logs
+
+*.tar
