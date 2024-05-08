@@ -17,7 +17,7 @@ from videogpt.dist_ops import allgather
 
 def main():
     assert torch.cuda.is_available()
-    ngpus = torch.cuda.device_count()
+    ngpus = 1 # torch.cuda.device_count()
     assert FVD_SAMPLE_SIZE % ngpus == 0
 
     mp.spawn(main_worker, nprocs=ngpus, args=(ngpus, args), join=True)
