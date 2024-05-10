@@ -154,6 +154,7 @@ class ImageGPT(nn.Module):
             with torch.no_grad(), self.sample_mode():
                 prev_idx = None
                 for j, idx in enumerate(self.sample_order()):
+                    print(f"J: {j}")
                     # idx must be a tuple, and not a list
                     # pytorch tensor indexing is different when using list vs tuple
                     # tuple is indexing, list is gather
@@ -171,19 +172,47 @@ class ImageGPT(nn.Module):
                     else:
                         s_inp, q_inp = samples_subset[prev_idx], quantized[prev_idx]
 
-                    h = self(quantized=q_inp, encodings=s_inp, cond=cond_subset, decode_step=j,
-                                  decode_idx=idx)['gen_logits']
+                    s_inp = torch.squeeze(s_inp, -1)
+                    q_inp = torch.squeeze(q_inp, -1)
 
-                    logits = self.maskgit.sample(h.shape[0], self.MASKGIT_T_draft,
+                    if self.training:
+                        assert j is None and idx is None  # FIXME: not sure
+
+                    return_dict = dict()
+
+                    """ Compute generative logits """
+
+                    return_dict.update(self._core(embeddings=quantized, cond=cond,
+                                                decode_step=j, decode_idx=idx))
+                    
+                    h = return_dict['gen_logits']
+                    # print(f"H SHAPE: {h.shape}")
+
+                    dims = h.shape
+
+                    # Combine the batch and time dimensions
+                    h = h.view(-1, *h.shape[2:])
+                    # print(f"H SHAPE reshaped {h.shape}")
+                    batch_size = h.shape[0]
+                    logits = self.maskgit.sample(batch_size, self.MASKGIT_T_draft,
                                             self.MASKGIT_T_revise, self.MASKGIT_M,
-                                            cond=h)
+                                            cond=h, sample_shape=h.shape[1:3])
 
-                    probs = F.softmax(logits / temperature, dim=-1)
-                    if probs.shape[0] == 1:
-                        probs = probs.squeeze().unsqueeze(0)
+                    
+                    logits = logits.view(dims[0], dims[1], *logits.shape[1:])
+                    # During training, logits SHAPE torch.Size([4, 4, 32, 32, 1024])
+                    # print(f"logits SHAPE {logits.shape}")
+
+                    if logits.shape[0] == 1:
+                        logits = logits.squeeze().unsqueeze(0)
                     else:
-                        probs = probs.squeeze()
-                    samples_subset[batch_idx] = torch.multinomial(probs, 1).squeeze(-1)
+                        logits = logits.squeeze()
+
+                    # print(f"logits SHAPE2 {logits.shape}")
+                    # print(f"PROBS SHAPE {probs.shape}")
+                    # print(batch_idx)
+                    # print(samples_subset.shape)
+                    samples_subset[batch_idx] = logits[batch_idx]
 
                     prev_idx = batch_idx_slice
 
@@ -225,6 +254,11 @@ class ImageGPT(nn.Module):
         else:
             assert not self.training
             cond_map = self.cond_cache
+
+        # embeddings SHAPE: torch.Size([32, 4, 32, 32, 1, 256])
+        embeddings = torch.squeeze(embeddings, dim=-2)
+        # embeddings SHAPE: torch.Size([4, 4, 32, 32, 256])    
+        # print(f"embeddings SHAPE: {embeddings.shape}")
 
         h = self.fc_in(embeddings)
 
@@ -275,6 +309,7 @@ class ImageGPT(nn.Module):
         """ Compute generative loss """
 
         logits, _, mask = self.forward_maskgit(encodings, return_dict['gen_logits'])
+        # print(f"logits SHAPE {logits.shape}")
 
         loss = F.cross_entropy(shift_dim(logits, -1, 1), encodings, reduction='none')
 

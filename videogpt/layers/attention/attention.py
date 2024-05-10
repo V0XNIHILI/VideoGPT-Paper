@@ -112,8 +112,8 @@ class MultiHeadAttention(nn.Module):
             if self.causal:
                 idx = (slice(None, None), slice(None, None)) + \
                     tuple([slice(i, i + 1) for i in decode_idx])
-                self.cache['k'][idx] = k
-                self.cache['v'][idx] = v
+                self.cache['k'][idx] = k[idx]
+                self.cache['v'][idx] = v[idx]
             k, v = self.cache['k'], self.cache['v']
 
         a = self.attn(q, k, v, decode_step, decode_idx)

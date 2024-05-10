@@ -61,7 +61,7 @@ def get_distributed_loaders(dset_configs, batch_size, seed):
                                    pin_memory=True, sampler=train_sampler)
 
     test_sampler = data.distributed.DistributedSampler(test_dset, num_replicas=size, rank=rank, seed=seed)
-    test_loader = data.DataLoader(test_dset, batch_size=batch_size // size, num_workers=4,
+    test_loader = data.DataLoader(test_dset, batch_size=16, num_workers=4,
                                   pin_memory=True, sampler=test_sampler)
 
     return train_loader, test_loader, train_dset

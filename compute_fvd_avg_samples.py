@@ -14,6 +14,8 @@ from videogpt.fvd.fvd import FVD_SAMPLE_SIZE, get_fvd_logits, frechet_distance, 
 from videogpt.config_cond import config_cond_types
 from videogpt.dist_ops import allgather
 
+from videogpt.train_utils import load_vqvae
+
 
 def main():
     assert torch.cuda.is_available()
@@ -38,18 +40,17 @@ def main_worker(rank, size, args_in):
     #################### Load VQ-VAE ########################################
     vqvae_ckpt = torch.load(prior_ckpt['vqvae_ckpt'], map_location=device)
 
-    dset_configs = vqvae_ckpt['dset_configs']
+    dset_configs = dict(dataset="bair_pushing", resolution=64, n_frames=16)
 
     _, test_loader, dset = get_distributed_loaders(
         dset_configs=dset_configs,
         batch_size=FVD_SAMPLE_SIZE, seed=seed,
     )
 
-    vqvae, vq_hp = load_model(
+    vqvae, vq_hp = load_vqvae(
         ckpt=vqvae_ckpt,
-        device=device,
-        freeze_model=True,
-        cond_types=tuple()
+        is_root=False,
+        device=device, freeze_model=True
     )
 
     #################### Load Prior ########################################
@@ -58,20 +59,20 @@ def main_worker(rank, size, args_in):
         cond_hp=prior_ckpt['cond_hp'], dset=dset
     )
 
-    latent_shape = vqvae.latent_shape
-    quantized_shape = vqvae.quantized_shape
-    if is_root:
-        print('latent shape', latent_shape)
-        print('quantized shape', quantized_shape)
-        print('total latents', np.prod(latent_shape))
+    # latent_shape = vqvae.latent_shape
+    # quantized_shape = vqvae.quantized_shape
+    # if is_root:
+    #     print('latent shape', latent_shape)
+    #     print('quantized shape', quantized_shape)
+    #     print('total latents', np.prod(latent_shape))
 
     prior, hp = load_model(ckpt=prior_ckpt, device=device, freeze_model=True,
                            cond_types=cond_types)
     codebook = vqvae.codebook
 
     if is_root:
-        print(f"Loaded vqvae {prior_ckpt['vqvae_ckpt']} at iteration {vqvae_ckpt['iteration']}, loss = {vqvae_ckpt['best_loss']}")
-        print(f"Loaded GPT {args.prior_ckpt} at iteration {prior_ckpt['iteration']}, loss {prior_ckpt['best_loss']}")
+        print(f"Loaded vqvae {prior_ckpt['vqvae_ckpt']}") # at iteration {vqvae_ckpt['iteration']}, loss = {vqvae_ckpt['best_loss']}")
+        print(f"Loaded GPT {args.prior_ckpt}") # at iteration {prior_ckpt['iteration']}, loss {prior_ckpt['best_loss']}")
 
     #################### Load I3D ########################################
     i3d = load_fvd_model(device)
