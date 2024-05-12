@@ -18,6 +18,8 @@ from videogpt.utils import chunk
 from videogpt.dist_ops import allgather
 from videogpt.layers.utils import shift_dim
 
+from videogpt.vqvae.vqvae import VQVAE
+
 
 def get_rank_size():
     if dist.is_initialized():
@@ -59,7 +61,7 @@ def get_distributed_loaders(dset_configs, batch_size, seed):
                                    pin_memory=True, sampler=train_sampler)
 
     test_sampler = data.distributed.DistributedSampler(test_dset, num_replicas=size, rank=rank, seed=seed)
-    test_loader = data.DataLoader(test_dset, batch_size=batch_size // size, num_workers=4,
+    test_loader = data.DataLoader(test_dset, batch_size=32, num_workers=4,
                                   pin_memory=True, sampler=test_sampler)
 
     return train_loader, test_loader, train_dset
@@ -127,13 +129,13 @@ def load_vqvae(ckpt, device, is_root, freeze_model) -> Tuple[Any, Dict[str, Any]
     if is_root:
         print(f"VQ-VAE checkpoint iteration {ckpt['iteration']} with best loss {ckpt['best_loss']}")
 
-    model, hp = config_model(
-        configs_str='', **ckpt['hp'], cond_types=None)
-    model = model.to(device=device)
-    model.load_state_dict(ckpt['state_dict'])
+
+    model =  VQVAE.load_from_checkpoint("") #TODO: replace with the path to the downloaded checkpoint
+    hp = {"embedding_dim": model.embedding_dim, "codes_per_book": model.n_codes}
+    model.codebook._need_init = False
 
     # only perform data-dependent init when training from scratch, broadcast otherwise
-    model.no_need_init()
+    # model.no_need_init()
 
     if freeze_model:
         # disable gradients
@@ -143,15 +145,18 @@ def load_vqvae(ckpt, device, is_root, freeze_model) -> Tuple[Any, Dict[str, Any]
 
         ckpt = None  # no need to return checkpoint dict
 
-    return model, hp, ckpt
+    model = model.to(device=device)
+
+    return model, hp
 
 
 def save_checkpoint(state, is_best, is_root, output_dir, filename='checkpoint.pth.tar'):
     if is_root:
         ckpt_dir = os.path.join(output_dir, 'checkpoints')
         filename = os.path.join(ckpt_dir, filename)
-        torch.save(state, filename)
+        
         if is_best:
+            torch.save(state, filename)
             shutil.copyfile(filename, os.path.join(ckpt_dir, 'model_best.pth.tar'))
 
         print(f'saved checkpoints to {filename}, is_best = {is_best}')

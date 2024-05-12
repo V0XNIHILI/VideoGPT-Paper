@@ -16,7 +16,7 @@ from torchvision.datasets import UCF101
 from torchvision.datasets.folder import make_dataset
 from torchvision.datasets.video_utils import VideoClips
 
-DATA_DIR = os.environ.get("DATA_DIR", '/home/wilson/data/datasets')
+DATA_DIR = os.environ.get("DATA_DIR", '/space/ddenblanken/Projects/VideoGPT/bair') #TODO: you might need to replace
 
 
 def get_datasets(dataset, **dset_configs):

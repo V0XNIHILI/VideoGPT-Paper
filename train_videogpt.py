@@ -5,6 +5,10 @@ import os
 import os.path as osp
 import numpy as np
 
+import wandb
+
+# Start a wandb run with `sync_tensorboard=True`
+
 import torch
 import torch.optim as optim
 import torch.nn as nn
@@ -21,7 +25,7 @@ from videogpt.config_cond import config_cond_types
 from videogpt.layers.utils import shift_dim
 from videogpt.train_utils import get_distributed_loaders, seed_all, get_output_dir, \
     get_ckpt, save_checkpoint, InfDataLoader, load_model, \
-    config_summary_writer, config_device, sample
+    config_summary_writer, config_device, sample, load_vqvae
 from videogpt.dist_ops import DistributedDataParallel, allreduce_avg_list, allgather
 from videogpt.layers.checkpoint import CheckpointFunction
 
@@ -37,6 +41,10 @@ def main_worker(rank, size, args_in):
     global args
     args = args_in
     is_root = rank == 0
+
+    if is_root:
+        wandb.init(project="moving_mnist_videogpt", sync_tensorboard=True)
+
 
     dist.init_process_group(backend='nccl', init_method=f"tcp://localhost:{args.port}",
                             world_size=size, rank=rank)
@@ -80,17 +88,16 @@ def main_worker(rank, size, args_in):
         print(f'Loading VQ-VAE from {vqvae_ckpt}')
 
     vqvae_ckpt_loaded = torch.load(vqvae_ckpt, map_location=device)
-    vqvae, vq_hp = load_model(
+    vqvae, vq_hp = load_vqvae(
         ckpt=vqvae_ckpt_loaded,
-        device=device, freeze_model=True, cond_types=tuple()
+        is_root=False,
+        device=device, freeze_model=True
     )
     del vqvae_ckpt_loaded
 
     latent_shape = vqvae.latent_shape
-    quantized_shape = vqvae.quantized_shape
     if is_root:
         print('latent shape', latent_shape)
-        print('quantized shape', quantized_shape)
         print('total latents', np.prod(latent_shape))
 
     """ Config cond_types"""
@@ -133,7 +140,7 @@ def main_worker(rank, size, args_in):
             if cond_hp['class_cond']:
                 cond.append(batch['label'].to(device, non_blocking=True))
 
-            quantized, encodings = vqvae.encode(x=videos, no_flatten=True)
+            encodings, quantized = vqvae.encode(x=videos, include_embeddings=True)
 
             # latent_shape = (t, h, w, l)
             quantized = shift_dim(quantized, 1, -1)  # (b, d, t, h, w, l) -> (b, t, h, w, l, d)  # channel first -> last
@@ -470,8 +477,8 @@ if __name__ == "__main__":
     parser.add_argument('--amp', action='store_true', help='Use AMP training')
 
     # Logging Parameters
-    parser.add_argument('--test_every', type=int, default=10000, help='default: 5000')
-    parser.add_argument('--generate_every', type=int, default=10000, help='default: 10000')
+    parser.add_argument('--test_every', type=int, default=5000, help='default: 5000')
+    parser.add_argument('--generate_every', type=int, default=10000*1000000, help='default: 10000')
     parser.add_argument('-i', '--log_interval', type=int, default=100, help='default: 100')
 
     parser.add_argument('-p', '--port', type=int, default=23455,

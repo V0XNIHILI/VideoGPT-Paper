@@ -12,6 +12,8 @@ from videogpt.layers.norm import LayerNorm
 from videogpt.layers.attention import SelfAttentionModel
 from videogpt.layers.utils import shift_dim, LambdaModule
 
+from torch_maskgit import MaskGit
+
 MAX_SAMPLES_PER_BATCH = 32
 
 class ImageGPT(nn.Module):
@@ -62,13 +64,38 @@ class ImageGPT(nn.Module):
 
         self.norm = LayerNorm(embd_dim, cond_dim=cond_dim)
 
-        self.fc_out = nn.Linear(embd_dim, n_vocab, bias=False)
-        self.fc_out.weight.data.copy_(torch.zeros(n_vocab, embd_dim))
+        #self.fc_out = nn.Linear(self.embd_dim, self.n_vocab)
+        self.fc_out = nn.Identity()
 
         self.gen_loss = nn.CrossEntropyLoss()
 
         self.cond_cache = None
         self._sample_idxs = self._get_sample_order(shape, attn_type, attn_kwargs)
+
+        self.MASKGIT_T_draft = 8
+        self.MASKGIT_T_revise = 8
+        self.MASKGIT_M = 2
+        MASKGIT_VOCAB_DIM = 256
+        MASKGIT_HIDDEN_DIM = 96
+        MASKGIT_SHAPE = self.shape[1:]  # self.shape is (t, h, w) = (16, 4, 4) but we do per frame masking so we remove the time dimension
+        TFM_ARGS = {
+            "embed_dim": 96,
+            "num_heads": 8,
+            "num_layers": 8,
+            "mlp_dim": MASKGIT_HIDDEN_DIM*4, # Can be anything
+            "dropout": 0.0,
+            "attention_dropout": 0.0,
+
+            "vocab_dim": MASKGIT_VOCAB_DIM, # Required, else the code fails
+            # "vocab_size": vocab_size, # DONT USE INTERNAL TF EMBEDDINGS AS TECO DOESNT EITHE
+            "input_dim": embd_dim # Input dimensions for pre-encoded tokens
+        }
+
+        self.maskgit = MaskGit(MASKGIT_SHAPE,
+                               n_vocab,
+                               MASKGIT_VOCAB_DIM,
+                               'cosine',
+                               TFM_ARGS)
 
     def sample_order(self):
         for idx in self._sample_idxs:
@@ -127,6 +154,7 @@ class ImageGPT(nn.Module):
             with torch.no_grad(), self.sample_mode():
                 prev_idx = None
                 for j, idx in enumerate(self.sample_order()):
+                    print(f"J: {j}")
                     # idx must be a tuple, and not a list
                     # pytorch tensor indexing is different when using list vs tuple
                     # tuple is indexing, list is gather
@@ -144,14 +172,47 @@ class ImageGPT(nn.Module):
                     else:
                         s_inp, q_inp = samples_subset[prev_idx], quantized[prev_idx]
 
-                    logits = self(quantized=q_inp, encodings=s_inp, cond=cond_subset, decode_step=j,
-                                  decode_idx=idx)['gen_logits']
-                    probs = F.softmax(logits / temperature, dim=-1)
-                    if probs.shape[0] == 1:
-                        probs = probs.squeeze().unsqueeze(0)
+                    s_inp = torch.squeeze(s_inp, -1)
+                    q_inp = torch.squeeze(q_inp, -1)
+
+                    if self.training:
+                        assert j is None and idx is None  # FIXME: not sure
+
+                    return_dict = dict()
+
+                    """ Compute generative logits """
+
+                    return_dict.update(self._core(embeddings=quantized, cond=cond,
+                                                decode_step=j, decode_idx=idx))
+                    
+                    h = return_dict['gen_logits']
+                    # print(f"H SHAPE: {h.shape}")
+
+                    dims = h.shape
+
+                    # Combine the batch and time dimensions
+                    h = h.view(-1, *h.shape[2:])
+                    # print(f"H SHAPE reshaped {h.shape}")
+                    batch_size = h.shape[0]
+                    logits = self.maskgit.sample(batch_size, self.MASKGIT_T_draft,
+                                            self.MASKGIT_T_revise, self.MASKGIT_M,
+                                            cond=h, sample_shape=h.shape[1:3])
+
+                    
+                    logits = logits.view(dims[0], dims[1], *logits.shape[1:])
+                    # During training, logits SHAPE torch.Size([4, 4, 32, 32, 1024])
+                    # print(f"logits SHAPE {logits.shape}")
+
+                    if logits.shape[0] == 1:
+                        logits = logits.squeeze().unsqueeze(0)
                     else:
-                        probs = probs.squeeze()
-                    samples_subset[batch_idx] = torch.multinomial(probs, 1).squeeze(-1)
+                        logits = logits.squeeze()
+
+                    # print(f"logits SHAPE2 {logits.shape}")
+                    # print(f"PROBS SHAPE {probs.shape}")
+                    # print(batch_idx)
+                    # print(samples_subset.shape)
+                    samples_subset[batch_idx] = logits[batch_idx]
 
                     prev_idx = batch_idx_slice
 
@@ -194,6 +255,11 @@ class ImageGPT(nn.Module):
             assert not self.training
             cond_map = self.cond_cache
 
+        # embeddings SHAPE: torch.Size([32, 4, 32, 32, 1, 256])
+        embeddings = torch.squeeze(embeddings, dim=-2)
+        # embeddings SHAPE: torch.Size([4, 4, 32, 32, 256])    
+        # print(f"embeddings SHAPE: {embeddings.shape}")
+
         h = self.fc_in(embeddings)
 
         inps = h, cond_map, decode_step, decode_idx
@@ -204,6 +270,23 @@ class ImageGPT(nn.Module):
 
         return_dict.update(gen_logits=gen_logits)
         return return_dict
+
+    def forward_maskgit(self, targets, h):
+        # h is now of shape: (batch, t, h, w, c)
+        dims = h.shape
+
+        # Combine the batch and time dimensions
+        h = h.view(-1, *h.shape[2:])
+        maskgit_targets = targets.view(-1, *targets.shape[2:])
+
+        logits, labels, mask = self.maskgit(maskgit_targets, h)
+
+        # Split the batch and time dimensions again
+        logits = logits.view(dims[0], dims[1], *logits.shape[1:])
+        labels = labels.view(dims[0], dims[1], *labels.shape[1:])
+        mask = mask.view(dims[0], dims[1], *mask.shape[1:])
+
+        return logits, labels, mask
 
     def forward(
             self,
@@ -225,7 +308,14 @@ class ImageGPT(nn.Module):
 
         """ Compute generative loss """
 
-        gen_loss = self.gen_loss(shift_dim(return_dict['gen_logits'], -1, 1), encodings)
-        return_dict.update(loss=gen_loss)
+        logits, _, mask = self.forward_maskgit(encodings, return_dict['gen_logits'])
+        # print(f"logits SHAPE {logits.shape}")
+
+        loss = F.cross_entropy(shift_dim(logits, -1, 1), encodings, reduction='none')
+
+        loss = (loss * mask).sum() / mask.sum()
+        #gen_loss = loss * np.prod(self.shape)
+
+        return_dict.update(loss=loss)
 
         return return_dict

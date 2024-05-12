@@ -7,7 +7,7 @@ from videogpt.utils import deepclone
 from videogpt.layers.pos_embd import BroadcastPosEmbedND
 from videogpt.layers.utils import view_range, shift_dim
 from videogpt.layers.attention.full_attention import FullAttention
-from videogpt.layers.attention.sparse_attention import SparseAttention
+# from videogpt.layers.attention.sparse_attention import SparseAttention
 
 
 class EncoderAttention(nn.Module):
@@ -112,8 +112,8 @@ class MultiHeadAttention(nn.Module):
             if self.causal:
                 idx = (slice(None, None), slice(None, None)) + \
                     tuple([slice(i, i + 1) for i in decode_idx])
-                self.cache['k'][idx] = k
-                self.cache['v'][idx] = v
+                self.cache['k'][idx] = k[idx]
+                self.cache['v'][idx] = v[idx]
             k, v = self.cache['k'], self.cache['v']
 
         a = self.attn(q, k, v, decode_step, decode_idx)

@@ -1,0 +1,1 @@
+python3 compute_fvd_avg_samples.py --prior_ckpt /space/ddenblanken/Projects/VideoGPT-Paper/bair_outputs_1714930869.887219/checkpoints/model_best.pth.tar

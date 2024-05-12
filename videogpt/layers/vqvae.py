@@ -3,7 +3,7 @@ import math
 import functools
 
 import numpy as np
-from axial_attention import AxialAttention
+# from axial_attention import AxialAttention
 
 import torch
 import torch.nn as nn

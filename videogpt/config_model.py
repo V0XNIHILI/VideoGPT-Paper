@@ -41,13 +41,13 @@ vae_res128_ds444 = dict(
 # BAIR / ViZDoom / RoboNet
 gpt_small = dict(
     model_cls='ImageGPT',
-    out_features=512,
+    out_features=513,
     proj_dim=128,
     n_head=4, n_layer=8,
     ff_mult=4,
     dropout=0.2,
     checkpoint=False,
-    attn_type='sparse',
+    attn_type='full',
     attn_kwargs=dict(attn_dropout=0.),
 )
 
