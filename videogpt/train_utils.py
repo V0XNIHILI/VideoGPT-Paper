@@ -131,7 +131,7 @@ def load_vqvae(ckpt, device, is_root, freeze_model) -> Tuple[Any, Dict[str, Any]
         print(f"VQ-VAE checkpoint iteration {ckpt['iteration']} with best loss {ckpt['best_loss']}")
 
 
-    model =  VQVAE.load_from_checkpoint("/space/ddenblanken/Projects/VideoGPT/bair_stride4x2x2")
+    model =  VQVAE.load_from_checkpoint("") #TODO: replace with the path to the downloaded checkpoint
     hp = {"embedding_dim": model.embedding_dim, "codes_per_book": model.n_codes}
     model.codebook._need_init = False
 
