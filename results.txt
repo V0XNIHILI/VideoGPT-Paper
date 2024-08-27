@@ -1,0 +1,5 @@
+Loaded vqvae /space/ddenblanken/Projects/VideoGPT/bair_stride4x2x2
+Loaded GPT /space/ddenblanken/Projects/VideoGPT-Paper/bair_outputs_1714930869.887219/checkpoints/model_best.pth.tar
+32
+32
+32

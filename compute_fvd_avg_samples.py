@@ -19,7 +19,7 @@ from videogpt.train_utils import load_vqvae
 
 def main():
     assert torch.cuda.is_available()
-    ngpus = 1 # torch.cuda.device_count()
+    ngpus = torch.cuda.device_count()
     assert FVD_SAMPLE_SIZE % ngpus == 0
 
     mp.spawn(main_worker, nprocs=ngpus, args=(ngpus, args), join=True)
@@ -158,7 +158,7 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--seed', type=int, default=0)
     parser.add_argument('-p', '--prior_ckpt', type=str, required=True)
     parser.add_argument('-t', '--temperature', type=float, default=1.0)
-    parser.add_argument('-n', '--n_trials', type=int, default=10)
+    parser.add_argument('-n', '--n_trials', type=int, default=1)
     parser.add_argument('--port', type=int, default=23455)
 
     args = parser.parse_args()

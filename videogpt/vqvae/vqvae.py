@@ -47,6 +47,10 @@ class VQVAE(pl.LightningModule):
         h = self.post_vq_conv(shift_dim(h, -1, 1))
         return self.decoder(h)
 
+    def get_reconstruction(self, x):
+        encodings = self.encode(x=x)
+        return self.decode(encodings)
+
     def forward(self, x):
         z = self.pre_vq_conv(self.encoder(x))
         vq_output = self.codebook(z)

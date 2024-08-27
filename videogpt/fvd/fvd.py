@@ -8,8 +8,8 @@ import torch.utils.data as data
 from videogpt.fvd.pytorch_i3d import InceptionI3d
 import os
 
-MAX_BATCH = 16
-FVD_SAMPLE_SIZE = 256
+MAX_BATCH = 32
+FVD_SAMPLE_SIZE = 128
 TARGET_RESOLUTION = (224, 224)
 
 def preprocess(videos, target_resolution):
@@ -99,6 +99,7 @@ def frechet_distance(x1, x2):
 
 
 def get_logits(i3d, videos, device):
+    print(videos.shape[0])
     assert videos.shape[0] % MAX_BATCH == 0
     with torch.no_grad():
         logits = []

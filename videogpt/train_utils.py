@@ -11,6 +11,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import torch.utils.data as data
 import torch.distributed as dist
+import torch.utils.data as data_utils
 
 from videogpt.config_model import config_model
 from videogpt.dataset import get_datasets
@@ -57,11 +58,11 @@ def get_distributed_loaders(dset_configs, batch_size, seed):
 
     train_dset, test_dset = get_datasets(**dset_configs)
     train_sampler = data.distributed.DistributedSampler(train_dset, num_replicas=size, rank=rank, seed=seed)
-    train_loader = data.DataLoader(train_dset, batch_size=batch_size // size, num_workers=4,
+    train_loader = data.DataLoader(train_dset, batch_size=batch_size // size, num_workers=16,
                                    pin_memory=True, sampler=train_sampler)
 
     test_sampler = data.distributed.DistributedSampler(test_dset, num_replicas=size, rank=rank, seed=seed)
-    test_loader = data.DataLoader(test_dset, batch_size=32, num_workers=4,
+    test_loader = data.DataLoader(test_dset, batch_size=batch_size // size, num_workers=16,
                                   pin_memory=True, sampler=test_sampler)
 
     return train_loader, test_loader, train_dset
@@ -186,7 +187,6 @@ def load_model(
 
     return model, hp
 
-
 def sample(n_samples, batch, cond_hp, vae, prior, codebook,
            device, temperature, rank, size, gather):
     # the following might cause uneven chunks, then gathering hangs
@@ -219,7 +219,7 @@ def sample(n_samples, batch, cond_hp, vae, prior, codebook,
             is_root=rank == 0
         )
 
-        samples = vae.decode(x=encodings)  # (n, t, h, w, l) -> (n, c, t, h, w)
+        samples = vae.decode(encodings)  # (n, t, h, w, l) -> (n, c, t, h, w)
         samples = (samples + 0.5).clamp(0, 1)  # in [0, 1]
         samples = samples.detach().contiguous()
 

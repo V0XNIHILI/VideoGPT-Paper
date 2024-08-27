@@ -141,9 +141,13 @@ class ImageGPT(nn.Module):
 
         return ContextManager()
 
+    @torch.jit.script
     def sample(self, n, codebook, cond, device, temperature, no_flatten, is_root):
+        if is_root and os.environ.get('VERBOSE') == '1':
+            print(f"Need {n} samples, MAX_SAMPLER_PER_BATCH = {MAX_SAMPLES_PER_BATCH}")
         samples = torch.zeros((n,) + self.shape).long().to(device)
         assert all(n == c.shape[0] for c in cond), f"cond shapes {[c.shape for c in cond]}, n, {n}"
+
         for i in range(0, samples.shape[0], MAX_SAMPLES_PER_BATCH):
             if is_root:
                 pbar = tqdm(total=np.prod(self.shape))
@@ -196,6 +200,7 @@ class ImageGPT(nn.Module):
                                             self.MASKGIT_T_revise, self.MASKGIT_M,
                                             cond=h, sample_shape=h.shape[1:3])
 
+                    
                     logits = logits.view(dims[0], dims[1], *logits.shape[1:])
                     # During training, logits SHAPE torch.Size([4, 4, 32, 32, 1024])
                     # print(f"logits SHAPE {logits.shape}")
